@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Marcon VDC — Bluebeam Issue Log Generator</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--blue:#1F4E79;--blue-mid:#2E75B6;--blue-light:#D6E8F7;--blue-pale:#EEF5FC;--green:#375623;--green-light:#C6EFCE;--red:#CC0000;--red-light:#FFB3B3;--text:#1a1a1a;--text-muted:#6b6b6b;--text-faint:#9b9b9b;--border:#e0e0e0;--border-mid:#c8c8c8;--bg:#ffffff;--bg-off:#f7f7f5;--bg-alt:#f0f0ed;--r-sm:6px;--r-md:10px;--r-lg:14px}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;font-size:14px;color:var(--text);background:var(--bg-off);min-height:100vh;line-height:1.5}
+    .topbar{background:var(--blue);padding:0 2rem;height:52px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.18)}
+    .topbar-logo{font-size:13px;font-weight:600;color:rgba(255,255,255,.95);letter-spacing:.08em;text-transform:uppercase}
+    .topbar-sep{width:1px;height:22px;background:rgba(255,255,255,.2)}
+    .topbar-title{font-size:13px;color:rgba(255,255,255,.7)}
+    .topbar-spacer{flex:1}
+    .topbar-version{font-size:11px;color:rgba(255,255,255,.4)}
+    .layout{display:grid;grid-template-columns:320px 1fr;min-height:calc(100vh - 52px)}
+    .sidebar{background:var(--bg);border-right:1px solid var(--border);padding:1.5rem;overflow-y:auto;position:sticky;top:52px;height:calc(100vh - 52px)}
+    .sidebar-section{margin-bottom:1.75rem}
+    .section-label{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text-faint);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+    .drop-zone{border:1.5px dashed var(--border-mid);border-radius:var(--r-md);padding:1.5rem 1rem;text-align:center;cursor:pointer;transition:all .15s;background:var(--bg-off)}
+    .drop-zone:hover,.drop-zone.drag-over{border-color:var(--blue-mid);background:var(--blue-pale)}
+    .drop-zone .dz-icon{font-size:28px;margin-bottom:8px}
+    .drop-zone p{font-size:13px;color:var(--text-muted);margin-bottom:3px}
+    .drop-zone span{font-size:11px;color:var(--text-faint)}
+    .file-pill{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--blue-pale);border:1px solid var(--blue-light);border-radius:var(--r-sm);font-size:12px;margin-top:8px}
+    .file-pill .fname{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;color:var(--blue)}
+    .file-pill .fsize{color:var(--text-muted);flex-shrink:0}
+    .remove-btn{background:none;border:none;cursor:pointer;color:var(--text-faint);padding:2px 4px;border-radius:3px;font-size:14px;line-height:1}
+    .remove-btn:hover{background:var(--bg-alt);color:var(--text)}
+    .field{margin-bottom:12px}
+    .field label{display:block;font-size:12px;font-weight:500;color:var(--text-muted);margin-bottom:4px}
+    .field input{width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--r-sm);font-size:13px;color:var(--text);background:var(--bg);outline:none;transition:border-color .15s}
+    .field input:focus{border-color:var(--blue-mid);box-shadow:0 0 0 3px var(--blue-pale)}
+    .field .hint{font-size:11px;color:var(--text-faint);margin-top:3px;line-height:1.4}
+    .info-callout{background:var(--blue-pale);border-left:3px solid var(--blue-mid);border-radius:0 var(--r-sm) var(--r-sm) 0;padding:9px 11px;font-size:12px;color:var(--blue);line-height:1.5;margin-bottom:12px}
+    .btn-gen{width:100%;background:var(--blue);color:#fff;border:none;border-radius:var(--r-md);padding:10px 16px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;transition:background .15s,opacity .15s}
+    .btn-gen:hover:not(:disabled){background:#163b5e}
+    .btn-gen:disabled{opacity:.4;cursor:not-allowed}
+    .prog-wrap{margin-top:12px;display:none}
+    .prog-label{font-size:12px;color:var(--text-muted);margin-bottom:5px}
+    .prog-track{background:var(--bg-alt);border-radius:99px;height:5px;overflow:hidden}
+    .prog-fill{height:100%;background:var(--blue-mid);border-radius:99px;width:0%;transition:width .25s ease}
+    .err-box{margin-top:10px;display:none;background:#fff0f0;border:1px solid #ffcccc;border-radius:var(--r-sm);padding:9px 11px;font-size:12px;color:var(--red);white-space:pre-wrap;word-break:break-word}
+    .main{padding:2rem;overflow-y:auto}
+    .empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:400px;text-align:center;color:var(--text-faint)}
+    .empty-state .es-icon{font-size:48px;margin-bottom:1rem;opacity:.25}
+    .empty-state h2{font-size:16px;font-weight:500;color:var(--text-muted);margin-bottom:6px}
+    .empty-state p{font-size:13px;max-width:340px;line-height:1.6}
+    .stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:1.5rem}
+    .stat-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--r-md);padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+    .stat-card .slabel{font-size:11px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px}
+    .stat-card .sval{font-size:28px;font-weight:600;color:var(--text);line-height:1}
+    .stat-card.s-open .sval{color:var(--red)}
+    .stat-card.s-closed .sval{color:#2e7d32}
+    .stat-card.s-total .sval{color:var(--blue)}
+    .authors-panel{background:var(--bg);border:1px solid var(--border);border-radius:var(--r-md);padding:14px 16px;margin-bottom:1.5rem;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+    .authors-panel h3{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text-faint);margin-bottom:10px}
+    .author-chips{display:flex;flex-wrap:wrap;gap:7px}
+    .chip{display:inline-flex;align-items:center;gap:6px;background:var(--bg-off);border:1px solid var(--border);border-radius:99px;padding:4px 10px 4px 8px;font-size:12px}
+    .chip-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+    .chip-dot.reviewer{background:var(--blue-mid)}
+    .chip-dot.respondent{background:#2e7d32}
+    .chip-name{font-weight:500;color:var(--text)}
+    .chip-count{color:var(--text-faint);font-size:11px}
+    .toolbar{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+    .toolbar input[type=text]{flex:1;min-width:180px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--r-sm);font-size:13px;outline:none}
+    .toolbar input[type=text]:focus{border-color:var(--blue-mid);box-shadow:0 0 0 3px var(--blue-pale)}
+    .toolbar select{padding:7px 10px;border:1px solid var(--border);border-radius:var(--r-sm);font-size:13px;background:var(--bg);color:var(--text);outline:none;cursor:pointer}
+    .table-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:12px;overflow-x:auto}
+    table{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed;min-width:860px}
+    thead th{background:var(--bg-off);color:var(--text-faint);font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;padding:9px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
+    tbody td{padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:top;color:var(--text);word-break:break-word}
+    tbody tr:last-child td{border-bottom:none}
+    tbody tr:hover td{background:var(--bg-off)}
+    .badge{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;white-space:nowrap}
+    .badge-open{background:var(--red-light);color:var(--red)}
+    .badge-closed{background:var(--green-light);color:var(--green)}
+    .disc-tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:var(--r-sm);background:var(--bg-alt);color:var(--text-muted);border:1px solid var(--border)}
+    .pagination{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-muted);margin-bottom:1.5rem}
+    .pagination button{border:1px solid var(--border);background:var(--bg);border-radius:var(--r-sm);padding:5px 12px;font-size:12px;cursor:pointer;color:var(--text)}
+    .pagination button:hover:not(:disabled){background:var(--bg-alt)}
+    .pagination button:disabled{opacity:.35;cursor:not-allowed}
+    .page-count{margin-left:auto;color:var(--text-faint);font-size:12px}
+    .dl-strip{display:flex;gap:8px;padding-top:1rem;border-top:1px solid var(--border)}
+    .btn-dl{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:9px 14px;border-radius:var(--r-md);border:1px solid var(--border);background:var(--bg);font-size:13px;font-weight:500;color:var(--text);cursor:pointer;transition:background .12s}
+    .btn-dl:hover{background:var(--bg-alt)}
+    .btn-dl.primary{background:var(--blue);color:#fff;border-color:var(--blue)}
+    .btn-dl.primary:hover{background:#163b5e}
+    @media(max-width:900px){.layout{grid-template-columns:1fr}.sidebar{position:static;height:auto;border-right:none;border-bottom:1px solid var(--border)}.stats-row{grid-template-columns:repeat(2,1fr)}}
+    ::-webkit-scrollbar{width:6px;height:6px}
+    ::-webkit-scrollbar-thumb{background:var(--border-mid);border-radius:99px}
+  </style>
+</head>
+<body>
+<div class="topbar">
+  <span class="topbar-logo">Marcon</span>
+  <div class="topbar-sep"></div>
+  <span class="topbar-title">VDC — Bluebeam Issue Log Generator</span>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-version">v1.3</span>
+</div>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-section">
+      <div class="section-label">1 — Upload PDF</div>
+      <div id="drop-zone" class="drop-zone">
+        <div class="dz-icon">📄</div>
+        <p>Drop a marked-up PDF here</p>
+        <span>or click to browse files</span>
+        <input type="file" id="file-input" accept=".pdf" style="display:none">
+      </div>
+      <div id="file-pill-wrap"></div>
+    </div>
+    <div class="sidebar-section">
+      <div class="section-label">2 — Project details</div>
+      <div class="field"><label>Project name</label><input type="text" id="proj-name" placeholder="e.g. 438 W Pender"></div>
+      <div class="field"><label>Drawing set / milestone</label><input type="text" id="milestone" placeholder="e.g. 75% Progress Set"></div>
+      <div class="field"><label>Review date</label><input type="text" id="review-date" placeholder="e.g. May 2026"></div>
+    </div>
+    <div class="sidebar-section">
+      <div class="section-label">3 — Coordination owner</div>
+      <div class="info-callout">The principal reviewer is responsible for tracking and coordinating all issues. Comment authors and respondents are detected automatically from the PDF annotations.</div>
+      <div class="field"><label>Principal reviewer name</label><input type="text" id="principal-reviewer" placeholder="e.g. Thomas Morrissey"><div class="hint">Appears on every issue row and the Excel summary.</div></div>
+      <div class="field"><label>Reviewer company</label><input type="text" id="reviewer-company" value="Marcon"></div>
+    </div>
+    <div class="sidebar-section">
+      <button class="btn-gen" id="generate-btn">⚙ Generate issue log</button>
+      <div class="prog-wrap" id="prog-wrap">
+        <div class="prog-label" id="prog-label">Processing…</div>
+        <div class="prog-track"><div class="prog-fill" id="prog-fill"></div></div>
+      </div>
+      <div class="err-box" id="err-box"></div>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="empty-state" id="empty-state">
+      <div class="es-icon">📋</div>
+      <h2>No issue log yet</h2>
+      <p>Upload a Bluebeam-marked PDF, fill in the project details, then click Generate.</p>
+    </div>
+    <div id="results" style="display:none">
+      <div class="stats-row" id="stats-row"></div>
+      <div class="authors-panel"><h3>Detected authors</h3><div class="author-chips" id="author-chips"></div></div>
+      <div class="toolbar">
+        <input type="text" id="search" placeholder="Search issues, sheets, authors…">
+        <select id="f-status"><option value="">All statuses</option><option>Open</option><option>Closed</option></select>
+        <select id="f-disc"><option value="">All disciplines</option></select>
+        <select id="f-sheet"><option value="">All sheets</option></select>
+        <select id="f-author"><option value="">All authors</option></select>
+      </div>
+      <div class="table-card">
+        <table>
+          <thead><tr>
+            <th style="width:72px">Issue #</th>
+            <th style="width:64px">Sheet</th>
+            <th style="width:130px">Comment author</th>
+            <th style="width:100px">Discipline</th>
+            <th>Issue description</th>
+            <th style="width:120px">Respondent</th>
+            <th style="width:72px">Status</th>
+          </tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div class="pagination">
+        <button id="prev-btn" onclick="changePage(-1)" disabled>← Prev</button>
+        <span id="page-info">Page 1 of 1</span>
+        <button id="next-btn" onclick="changePage(1)">Next →</button>
+        <span class="page-count" id="count-info"></span>
+      </div>
+      <div class="dl-strip">
+        <button class="btn-dl primary" onclick="downloadExcel()">⬇ Download Excel (.xlsx)</button>
+        <button class="btn-dl" onclick="downloadCSV()">⬇ Download CSV</button>
+      </div>
+    </div>
+  </main>
+</div>
+<script>
+// Disable separate worker — runs in main thread, works under file:// and SharePoint
+pdfjsLib.GlobalWorkerOptions.workerSrc = '';
+
+let allIssues = [], filteredIssues = [], currentPage = 1;
+const PAGE = 25;
+let currentFile = null;
+
+// ── Extract text from pdfjs annotation object ──────────────────────────────
+// pdfjs uses textContent[] and titleObj/contentsObj, NOT the 'contents' string
+function getContent(a) {
+  // textContent is an array of text runs — join them
+  if (a.textContent && a.textContent.length)
+    return a.textContent.join(' ').replace(/\s+/g,' ').trim();
+  // fallback: contentsObj.str
+  if (a.contentsObj && a.contentsObj.str && a.contentsObj.str.trim())
+    return a.contentsObj.str.trim();
+  return '';
+}
+function getAuthor(a) {
+  if (a.titleObj && a.titleObj.str) return a.titleObj.str.trim();
+  return '';
+}
+function getSubject(a) {
+  return a.fieldName || a.subtype || '';
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function setProg(pct, label) {
+  document.getElementById('prog-fill').style.width = pct + '%';
+  document.getElementById('prog-label').textContent = label;
+}
+function showErr(msg) { const b = document.getElementById('err-box'); b.textContent = msg; b.style.display = 'block'; }
+function hideErr() { document.getElementById('err-box').style.display = 'none'; }
+
+// ── File handling ──────────────────────────────────────────────────────────
+const dz = document.getElementById('drop-zone');
+const fi = document.getElementById('file-input');
+dz.addEventListener('click', () => fi.click());
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag-over'); handleFile(e.dataTransfer.files[0]); });
+fi.addEventListener('change', e => handleFile(e.target.files[0]));
+
+function handleFile(file) {
+  if (!file || !file.name.toLowerCase().endsWith('.pdf')) return;
+  currentFile = file;
+  dz.style.display = 'none';
+  document.getElementById('file-pill-wrap').innerHTML =
+    `<div class="file-pill">📄 <span class="fname">${file.name}</span><span class="fsize">${(file.size/1048576).toFixed(1)} MB</span><button class="remove-btn" onclick="removeFile()">✕</button></div>`;
+  if (!document.getElementById('proj-name').value)
+    document.getElementById('proj-name').value = file.name.replace(/\.pdf$/i,'').replace(/[_-]+/g,' ').trim();
+  if (!document.getElementById('review-date').value)
+    document.getElementById('review-date').value = new Date().toLocaleDateString('en-CA', {month:'long', year:'numeric'});
+}
+function removeFile() {
+  currentFile = null;
+  document.getElementById('file-pill-wrap').innerHTML = '';
+  dz.style.display = 'block'; fi.value = '';
+  document.getElementById('results').style.display = 'none';
+  document.getElementById('empty-state').style.display = 'flex';
+  hideErr();
+}
+
+// ── Response detection ─────────────────────────────────────────────────────
+const RESP_PAT = [
+  /^[\w\s]{0,20}response\s*:/i, /^(response|reply)\s*:/i,
+  /^noted[.,\s]/i, /^acknowledged/i,
+  /^will (be |address|revise|update|coordinate|include|provide|confirm)/i,
+  /^(to be|to) (addressed|resolved|updated|revised|coordinated)/i,
+  /^(incorporated|included|added|corrected|fixed|resolved) (in|on|per|as)/i,
+  /^(updated|revised) (per|as|in)/i, /^confirmed[.,\s]/i,
+  /^see (sheet|drawing|detail|revised)/i,
+  /^refer to (detail|sheet|drawing)/i,
+];
+function isResp(c) { return RESP_PAT.some(p => p.test(c.trim())); }
+
+function disc(c) {
+  const k = c.toLowerCase();
+  if (/struct|footing|slab|shear wall|rebar|pile|grade beam/.test(k)) return 'Structural';
+  if (/mechanic|hvac|duct|plumb|drain|sprinkler|ventil/.test(k))      return 'Mechanical';
+  if (/electr|lighting|panel|conduit|switchgear|generator/.test(k))   return 'Electrical';
+  if (/landscape|planter|tree|softscape|hardscape|irrigation/.test(k))return 'Landscape';
+  if (/civil|geotech|retaining|grading|stormwater/.test(k))           return 'Civil/Geotech';
+  if (/fire alarm|suppression|life safety/.test(k))                   return 'Fire Protection';
+  return 'Architecture';
+}
+
+// ── Generate ───────────────────────────────────────────────────────────────
+document.getElementById('generate-btn').addEventListener('click', async () => {
+  if (!currentFile) { showErr('Please upload a PDF first.'); return; }
+  hideErr();
+  document.getElementById('generate-btn').disabled = true;
+  document.getElementById('results').style.display = 'none';
+  document.getElementById('empty-state').style.display = 'none';
+  document.getElementById('prog-wrap').style.display = 'block';
+  setProg(5, 'Reading PDF…');
+
+  try {
+    const buf = await currentFile.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buf, disableRange: true, disableStream: true }).promise;
+    const n = pdf.numPages;
+    const principal = document.getElementById('principal-reviewer').value.trim() || '—';
+    const company   = document.getElementById('reviewer-company').value.trim()   || 'Marcon';
+    const issues = [];
+    let num = 1;
+
+    for (let i = 1; i <= n; i++) {
+      setProg(Math.round(5 + (i/n)*80), `Processing page ${i} of ${n}…`);
+      const page   = await pdf.getPage(i);
+      const annots = await page.getAnnotations();
+
+      // Sheet name from text layer
+      let sheet = `P${i}`;
+      try {
+        const tc  = await page.getTextContent();
+        const txt = tc.items.map(t => t.str).join(' ');
+        const m   = txt.match(/\b([A-Z]\d+\.\d+)\b/);
+        if (m) sheet = m[1];
+      } catch(e) {}
+
+      // Filter out link annotations and those with no content
+      const pa = annots
+        .filter(a => a.subtype !== 'Link')
+        .map(a => ({ content: getContent(a), author: getAuthor(a), subject: getSubject(a), sheet, page: i }))
+        .filter(a => a.content.length > 0);
+
+      const pageIss  = pa.filter(a => !isResp(a.content));
+      const pageResp = pa.filter(a =>  isResp(a.content));
+
+      for (const iss of pageIss) {
+        const resp = pageResp[0] || null;
+        let respText = '', respondent = '';
+        if (resp) {
+          respondent = resp.author;
+          respText   = resp.content
+            .replace(/^[\w\s]{0,25}response\s*:\s*/i, '')
+            .replace(/^(response|reply)\s*:\s*/i, '')
+            .trim();
+        }
+        issues.push({
+          'Issue #':            `CI-${String(num).padStart(3,'0')}`,
+          'Sheet':              iss.sheet,
+          'Page':               iss.page,
+          'Principal Reviewer': principal,
+          'Reviewer Company':   company,
+          'Comment Author':     iss.author || 'Unknown',
+          'Markup Type':        iss.subject,
+          'Discipline':         disc(iss.content),
+          'Issue Description':  iss.content,
+          'Respondent':         respondent,
+          'Response':           respText,
+          'Status':             respText ? 'Closed' : 'Open',
+          'Priority':           '',
+          'Assigned To':        '',
+          'Due Date':           '',
+          'Notes':              '',
+        });
+        num++;
+      }
+    }
+
+    allIssues = issues;
+    const cA = {}, rA = {};
+    for (const i of issues) {
+      if (i['Comment Author']) cA[i['Comment Author']] = (cA[i['Comment Author']]||0)+1;
+      if (i['Respondent'])     rA[i['Respondent']]     = (rA[i['Respondent']]||0)+1;
+    }
+    setProg(100, 'Done!');
+    renderResults(cA, rA);
+    setTimeout(() => { document.getElementById('prog-wrap').style.display = 'none'; }, 600);
+    document.getElementById('generate-btn').disabled = false;
+
+  } catch(err) {
+    showErr('Error: ' + err.message);
+    setProg(0, 'Failed');
+    document.getElementById('generate-btn').disabled = false;
+  }
+});
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function renderResults(cA, rA) {
+  document.getElementById('empty-state').style.display = 'none';
+  document.getElementById('results').style.display = 'block';
+  const open   = allIssues.filter(i => i.Status==='Open').length;
+  const sheets = new Set(allIssues.map(i => i.Sheet)).size;
+  document.getElementById('stats-row').innerHTML = `
+    <div class="stat-card s-total"><div class="slabel">Total issues</div><div class="sval">${allIssues.length}</div></div>
+    <div class="stat-card s-open"><div class="slabel">Open</div><div class="sval">${open}</div></div>
+    <div class="stat-card s-closed"><div class="slabel">Closed</div><div class="sval">${allIssues.length-open}</div></div>
+    <div class="stat-card"><div class="slabel">Sheets affected</div><div class="sval">${sheets}</div></div>`;
+  let chips = '';
+  for (const [n,c] of Object.entries(cA).sort((a,b)=>b[1]-a[1]))
+    chips += `<div class="chip"><span class="chip-dot reviewer"></span><span class="chip-name">${n}</span><span class="chip-count">${c} comment${c!==1?'s':''}</span></div>`;
+  for (const [n,c] of Object.entries(rA).sort((a,b)=>b[1]-a[1])) {
+    if (cA[n]) continue;
+    chips += `<div class="chip"><span class="chip-dot respondent"></span><span class="chip-name">${n}</span><span class="chip-count">${c} response${c!==1?'s':''}</span></div>`;
+  }
+  document.getElementById('author-chips').innerHTML = chips || '<span style="font-size:13px;color:#9b9b9b">No named authors detected.</span>';
+  populateFilters(); applyFilters();
+}
+
+function populateFilters() {
+  const u = arr => [...new Set(arr)].sort();
+  document.getElementById('f-disc').innerHTML   = '<option value="">All disciplines</option>'+ u(allIssues.map(i=>i.Discipline)).map(d=>`<option>${d}</option>`).join('');
+  document.getElementById('f-sheet').innerHTML  = '<option value="">All sheets</option>'     + u(allIssues.map(i=>i.Sheet)).map(s=>`<option>${s}</option>`).join('');
+  document.getElementById('f-author').innerHTML = '<option value="">All authors</option>'    + u(allIssues.map(i=>i['Comment Author']).filter(Boolean)).map(a=>`<option>${a}</option>`).join('');
+}
+function applyFilters() {
+  const q  = document.getElementById('search').value.toLowerCase();
+  const st = document.getElementById('f-status').value;
+  const di = document.getElementById('f-disc').value;
+  const sh = document.getElementById('f-sheet').value;
+  const au = document.getElementById('f-author').value;
+  filteredIssues = allIssues.filter(i =>
+    (!q  || i['Issue Description'].toLowerCase().includes(q) || i.Sheet.toLowerCase().includes(q) || i['Comment Author'].toLowerCase().includes(q)) &&
+    (!st || i.Status===st) && (!di || i.Discipline===di) && (!sh || i.Sheet===sh) && (!au || i['Comment Author']===au));
+  currentPage = 1; renderTable();
+}
+['search','f-status','f-disc','f-sheet','f-author'].forEach(id =>
+  document.getElementById(id).addEventListener(id==='search'?'input':'change', applyFilters));
+
+function renderTable() {
+  const s = (currentPage-1)*PAGE;
+  document.getElementById('tbody').innerHTML = filteredIssues.slice(s,s+PAGE).map(i=>`<tr>
+    <td style="font-size:12px;color:#9b9b9b">${i['Issue #']}</td>
+    <td style="font-weight:600;font-size:12px;color:var(--blue)">${i.Sheet}</td>
+    <td style="font-size:12px">${i['Comment Author']}</td>
+    <td><span class="disc-tag">${i.Discipline}</span></td>
+    <td>${i['Issue Description'].substring(0,160)}${i['Issue Description'].length>160?'…':''}</td>
+    <td style="font-size:12px;color:var(--text-muted)">${i.Respondent||'—'}</td>
+    <td><span class="badge badge-${i.Status.toLowerCase()}">${i.Status}</span></td>
+  </tr>`).join('');
+  const total = Math.max(1, Math.ceil(filteredIssues.length/PAGE));
+  document.getElementById('page-info').textContent  = `Page ${currentPage} of ${total}`;
+  document.getElementById('count-info').textContent = `${filteredIssues.length} issue${filteredIssues.length!==1?'s':''}`;
+  document.getElementById('prev-btn').disabled = currentPage<=1;
+  document.getElementById('next-btn').disabled = currentPage>=total;
+}
+function changePage(d) {
+  currentPage = Math.max(1, Math.min(Math.ceil(filteredIssues.length/PAGE), currentPage+d));
+  renderTable();
+}
+
+// ── Downloads ──────────────────────────────────────────────────────────────
+function projLabel() {
+  const p = document.getElementById('proj-name').value || 'Project';
+  const m = document.getElementById('milestone').value;
+  return m ? `${p} — ${m}` : p;
+}
+function downloadCSV() {
+  const cols = ['Issue #','Sheet','Page','Principal Reviewer','Reviewer Company','Comment Author','Markup Type','Discipline','Issue Description','Respondent','Response','Status','Priority','Assigned To','Due Date','Notes'];
+  const rows = [cols, ...allIssues.map(i => cols.map(c=>`"${(i[c]||'').toString().replace(/"/g,'""')}"` ))];
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(new Blob([rows.map(r=>r.join(',')).join('\n')], {type:'text/csv;charset=utf-8;'})),
+    download: projLabel().replace(/[^a-z0-9]/gi,'_') + '_Issue_Log.csv'
+  });
+  a.click();
+}
+function downloadExcel() {
+  if (typeof XLSX === 'undefined') { alert('Excel library not loaded. Please check your internet connection and try again.'); return; }
+  const wb   = XLSX.utils.book_new();
+  const cols = ['Issue #','Sheet','Page','Principal Reviewer','Reviewer Company','Comment Author','Markup Type','Discipline','Issue Description','Respondent','Response','Status','Priority','Assigned To','Due Date','Notes'];
+  const ws   = XLSX.utils.aoa_to_sheet([cols, ...allIssues.map(i=>cols.map(c=>i[c]||''))]);
+  ws['!cols'] = [8,8,6,20,16,18,14,14,58,18,50,9,10,18,11,24].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb, ws, 'Issue Log');
+  const open = allIssues.filter(i=>i.Status==='Open').length;
+  const dT={}, cT={}, rT={};
+  for (const i of allIssues) {
+    dT[i.Discipline]        = (dT[i.Discipline]||0)+1;
+    cT[i['Comment Author']] = (cT[i['Comment Author']]||0)+1;
+    if (i.Respondent) rT[i.Respondent] = (rT[i.Respondent]||0)+1;
+  }
+  const ws2 = XLSX.utils.aoa_to_sheet([
+    [projLabel()], [''],
+    ['Principal Reviewer', document.getElementById('principal-reviewer').value||'—'],
+    ['Reviewer Company',   document.getElementById('reviewer-company').value||'Marcon'],
+    ['Review Date',        document.getElementById('review-date').value||''],
+    [''], ['Summary',''],
+    ['Total Issues', allIssues.length], ['Open', open], ['Closed', allIssues.length-open],
+    [''], ['By Discipline','Count'], ...Object.entries(dT).sort((a,b)=>b[1]-a[1]),
+    [''], ['Comment Authors','Count'], ...Object.entries(cT).sort((a,b)=>b[1]-a[1]),
+    [''], ['Respondents','Count'], ...Object.entries(rT).sort((a,b)=>b[1]-a[1]),
+  ]);
+  ws2['!cols'] = [{wch:24},{wch:14}];
+  XLSX.utils.book_append_sheet(wb, ws2, 'Summary');
+  XLSX.writeFile(wb, projLabel().replace(/[^a-z0-9]/gi,'_') + '_Issue_Log.xlsx');
+}
+</script>
+</body>
+</html>
