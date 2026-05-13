@@ -6,7 +6,7 @@
   <title>Marcon VDC — Bluebeam Issue Log Generator</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
     :root{--blue:#1F4E79;--blue-mid:#2E75B6;--blue-light:#D6E8F7;--blue-pale:#EEF5FC;--green:#375623;--green-light:#C6EFCE;--red:#CC0000;--red-light:#FFB3B3;--text:#1a1a1a;--text-muted:#6b6b6b;--text-faint:#9b9b9b;--border:#e0e0e0;--border-mid:#c8c8c8;--bg:#ffffff;--bg-off:#f7f7f5;--bg-alt:#f0f0ed;--r-sm:6px;--r-md:10px;--r-lg:14px}
@@ -101,7 +101,7 @@
   <div class="topbar-sep"></div>
   <span class="topbar-title">VDC — Bluebeam Issue Log Generator</span>
   <div class="topbar-spacer"></div>
-  <span class="topbar-version">v1.3</span>
+  <span class="topbar-version">v1.5</span>
 </div>
 <div class="layout">
   <aside class="sidebar">
@@ -109,9 +109,9 @@
       <div class="section-label">1 — Upload PDF</div>
       <div id="drop-zone" class="drop-zone">
         <div class="dz-icon">📄</div>
-        <p>Drop a marked-up PDF here</p>
-        <span>or click to browse files</span>
-        <input type="file" id="file-input" accept=".pdf" style="display:none">
+        <p>Drop one or more PDFs here</p>
+        <span>or click to browse — multiple supported</span>
+        <input type="file" id="file-input" accept=".pdf" multiple style="display:none">
       </div>
       <div id="file-pill-wrap"></div>
     </div>
@@ -175,6 +175,7 @@
       <div class="dl-strip">
         <button class="btn-dl primary" onclick="downloadExcel()">⬇ Download Excel (.xlsx)</button>
         <button class="btn-dl" onclick="downloadCSV()">⬇ Download CSV</button>
+        <div style="margin-top:8px;font-size:11px;color:var(--text-faint);line-height:1.5">For a <strong>fully formatted</strong> Excel (colours, headers),<br>download the CSV then run <code>Style_Issue_Log_Excel.py</code></div>
       </div>
     </div>
   </main>
@@ -185,7 +186,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = '';
 
 let allIssues = [], filteredIssues = [], currentPage = 1;
 const PAGE = 25;
-let currentFile = null;
+let currentFiles = [];
 
 // ── Extract text from pdfjs annotation object ──────────────────────────────
 // pdfjs uses textContent[] and titleObj/contentsObj, NOT the 'contents' string
@@ -216,33 +217,47 @@ function hideErr() { document.getElementById('err-box').style.display = 'none'; 
 
 // ── File handling ──────────────────────────────────────────────────────────
 const dz = document.getElementById('drop-zone');
-const fi = document.getElementById('file-input');
-dz.addEventListener('click', () => fi.click());
+const fileInput = document.getElementById('file-input');
+dz.addEventListener('click', () => fileInput.click());
 dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
 dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
-dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag-over'); handleFile(e.dataTransfer.files[0]); });
-fi.addEventListener('change', e => handleFile(e.target.files[0]));
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag-over'); addFiles(Array.from(e.dataTransfer.files)); });
+fileInput.addEventListener('change', e => { addFiles(Array.from(e.target.files)); fileInput.value = ''; });
 
-function handleFile(file) {
-  if (!file || !file.name.toLowerCase().endsWith('.pdf')) return;
-  currentFile = file;
-  dz.style.display = 'none';
-  document.getElementById('file-pill-wrap').innerHTML =
-    `<div class="file-pill">📄 <span class="fname">${file.name}</span><span class="fsize">${(file.size/1048576).toFixed(1)} MB</span><button class="remove-btn" onclick="removeFile()">✕</button></div>`;
-  if (!document.getElementById('proj-name').value)
-    document.getElementById('proj-name').value = file.name.replace(/\.pdf$/i,'').replace(/[_-]+/g,' ').trim();
+function addFiles(files) {
+  const pdfs = files.filter(f => f.name.toLowerCase().endsWith('.pdf'));
+  if (!pdfs.length) return;
+  const existing = new Set(currentFiles.map(f => f.name));
+  pdfs.forEach(f => { if (!existing.has(f.name)) currentFiles.push(f); });
+  renderPills();
   if (!document.getElementById('review-date').value)
     document.getElementById('review-date').value = new Date().toLocaleDateString('en-CA', {month:'long', year:'numeric'});
 }
-function removeFile() {
-  currentFile = null;
-  document.getElementById('file-pill-wrap').innerHTML = '';
-  dz.style.display = 'block'; fi.value = '';
+
+function renderPills() {
+  const wrap = document.getElementById('file-pill-wrap');
+  if (!currentFiles.length) { wrap.innerHTML = ''; dz.style.display = 'block'; return; }
+  dz.style.display = 'none';
+  wrap.innerHTML = currentFiles.map((f, idx) =>
+    `<div class="file-pill">📄 <span class="fname">${f.name}</span><span class="fsize">${(f.size/1048576).toFixed(1)} MB</span><button class="remove-btn" onclick="removeFile(${idx})">✕</button></div>`
+  ).join('') + (currentFiles.length > 1
+    ? `<div style="margin-top:6px;font-size:11px;color:var(--text-faint)">${currentFiles.length} PDFs loaded — <a href="#" onclick="clearFiles();return false;" style="color:var(--blue-mid)">clear all</a></div>`
+    : '');
+}
+
+function removeFile(idx) {
+  currentFiles.splice(idx, 1);
+  renderPills();
+  if (!currentFiles.length) { document.getElementById('results').style.display='none'; document.getElementById('empty-state').style.display='flex'; hideErr(); }
+}
+
+function clearFiles() {
+  currentFiles = [];
+  renderPills();
   document.getElementById('results').style.display = 'none';
   document.getElementById('empty-state').style.display = 'flex';
   hideErr();
 }
-
 // ── Response detection ─────────────────────────────────────────────────────
 const RESP_PAT = [
   /^[\w\s]{0,20}response\s*:/i, /^(response|reply)\s*:/i,
@@ -269,42 +284,73 @@ function disc(c) {
 
 // ── Generate ───────────────────────────────────────────────────────────────
 document.getElementById('generate-btn').addEventListener('click', async () => {
-  if (!currentFile) { showErr('Please upload a PDF first.'); return; }
+  if (!currentFiles.length) { showErr('Please upload at least one PDF first.'); return; }
   hideErr();
   document.getElementById('generate-btn').disabled = true;
   document.getElementById('results').style.display = 'none';
   document.getElementById('empty-state').style.display = 'none';
   document.getElementById('prog-wrap').style.display = 'block';
-  setProg(5, 'Reading PDF…');
+  setProg(5, 'Reading PDFs…');
 
   try {
-    const buf = await currentFile.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: buf, disableRange: true, disableStream: true }).promise;
-    const n = pdf.numPages;
     const principal = document.getElementById('principal-reviewer').value.trim() || '—';
     const company   = document.getElementById('reviewer-company').value.trim()   || 'Marcon';
     const issues = [];
     let num = 1;
+    const totalFiles = currentFiles.length;
 
-    for (let i = 1; i <= n; i++) {
-      setProg(Math.round(5 + (i/n)*80), `Processing page ${i} of ${n}…`);
+    for (let fileIdx = 0; fileIdx < totalFiles; fileIdx++) {
+      const currentFile = currentFiles[fileIdx];
+      const sourceFileName = currentFile.name.replace(/\.pdf$/i, '');
+      const buf = await currentFile.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: buf, disableRange: true, disableStream: true }).promise;
+      const n = pdf.numPages;
+      const fileLabel = totalFiles > 1 ? ` (${currentFile.name})` : '';
+
+      for (let i = 1; i <= n; i++) {
+        const pct = Math.round(5 + ((fileIdx + i/n) / totalFiles) * 85);
+        setProg(pct, `PDF ${fileIdx+1}/${totalFiles}: page ${i}/${n}${fileLabel}…`);
       const page   = await pdf.getPage(i);
       const annots = await page.getAnnotations();
 
-      // Sheet name from text layer
+      // ── Sheet number extraction ────────────────────────────────────────────
+      // Priority 1: PDF page label (set by Bluebeam/AutoCAD, most reliable)
+      // Priority 2: Rightmost sheet-number-pattern text in text layer (title block bottom-right)
       let sheet = `P${i}`;
       try {
-        const tc  = await page.getTextContent();
-        const txt = tc.items.map(t => t.str).join(' ');
-        const m   = txt.match(/\b([A-Z]\d+\.\d+)\b/);
-        if (m) sheet = m[1];
+        const lbl = await page.getPageLabel();
+        if (lbl && lbl.trim()) {
+          // Label is often "E-501 - OVERALL LEVEL..." — take just the sheet number part
+          sheet = lbl.trim().split(/\s*[-–]\s*/)[0].trim() || lbl.trim();
+        }
       } catch(e) {}
 
-      // Filter out link annotations and those with no content
+      // Fallback: scan text layer for sheet number patterns, pick rightmost occurrence
+      // (title block is bottom-right, so highest X coordinate = most likely sheet number)
+      if (sheet === `P${i}`) {
+        try {
+          const tc = await page.getTextContent();
+          // Sheet number formats: A0.00, E-501, M-200, D0A.02, S-100, L1.01, etc.
+          const SHEET_RE = /^[A-Z]{1,2}-?\d+[A-Z]?(?:[.\-]\d+[A-Z]?)?$/;
+          let bestX = -Infinity, bestMatch = null;
+          for (const item of tc.items) {
+            const t = (item.str || '').trim();
+            if (!SHEET_RE.test(t)) continue;
+            if (/^[PW]/.test(t)) continue;   // skip false positives like P1.03, W1
+            const x = item.transform ? item.transform[4] : 0;
+            if (x > bestX) { bestX = x; bestMatch = t; }
+          }
+          if (bestMatch) sheet = bestMatch;
+        } catch(e) {}
+      }
+
+      // Filter out link annotations, no-content annotations, and AutoCAD SHX text.
+      // SHX text is created by AutoCAD during DWG→PDF export — not real reviewer markups.
       const pa = annots
         .filter(a => a.subtype !== 'Link')
         .map(a => ({ content: getContent(a), author: getAuthor(a), subject: getSubject(a), sheet, page: i }))
-        .filter(a => a.content.length > 0);
+        .filter(a => a.content.length > 0)
+        .filter(a => !/^AutoCAD SHX Text$/i.test(a.author) && !/shx/i.test(a.subject));
 
       const pageIss  = pa.filter(a => !isResp(a.content));
       const pageResp = pa.filter(a =>  isResp(a.content));
@@ -336,10 +382,12 @@ document.getElementById('generate-btn').addEventListener('click', async () => {
           'Assigned To':        '',
           'Due Date':           '',
           'Notes':              '',
+          'Source File':        sourceFileName,
         });
         num++;
       }
-    }
+    } // end page loop
+    } // end file loop
 
     allIssues = issues;
     const cA = {}, rA = {};
@@ -438,35 +486,285 @@ function downloadCSV() {
   });
   a.click();
 }
-function downloadExcel() {
-  if (typeof XLSX === 'undefined') { alert('Excel library not loaded. Please check your internet connection and try again.'); return; }
-  const wb   = XLSX.utils.book_new();
-  const cols = ['Issue #','Sheet','Page','Principal Reviewer','Reviewer Company','Comment Author','Markup Type','Discipline','Issue Description','Respondent','Response','Status','Priority','Assigned To','Due Date','Notes'];
-  const ws   = XLSX.utils.aoa_to_sheet([cols, ...allIssues.map(i=>cols.map(c=>i[c]||''))]);
-  ws['!cols'] = [8,8,6,20,16,18,14,14,58,18,50,9,10,18,11,24].map(w=>({wch:w}));
-  XLSX.utils.book_append_sheet(wb, ws, 'Issue Log');
-  const open = allIssues.filter(i=>i.Status==='Open').length;
-  const dT={}, cT={}, rT={};
-  for (const i of allIssues) {
-    dT[i.Discipline]        = (dT[i.Discipline]||0)+1;
-    cT[i['Comment Author']] = (cT[i['Comment Author']]||0)+1;
-    if (i.Respondent) rT[i.Respondent] = (rT[i.Respondent]||0)+1;
-  }
-  const ws2 = XLSX.utils.aoa_to_sheet([
-    [projLabel()], [''],
-    ['Principal Reviewer', document.getElementById('principal-reviewer').value||'—'],
-    ['Reviewer Company',   document.getElementById('reviewer-company').value||'Marcon'],
-    ['Review Date',        document.getElementById('review-date').value||''],
-    [''], ['Summary',''],
-    ['Total Issues', allIssues.length], ['Open', open], ['Closed', allIssues.length-open],
-    [''], ['By Discipline','Count'], ...Object.entries(dT).sort((a,b)=>b[1]-a[1]),
-    [''], ['Comment Authors','Count'], ...Object.entries(cT).sort((a,b)=>b[1]-a[1]),
-    [''], ['Respondents','Count'], ...Object.entries(rT).sort((a,b)=>b[1]-a[1]),
-  ]);
-  ws2['!cols'] = [{wch:24},{wch:14}];
-  XLSX.utils.book_append_sheet(wb, ws2, 'Summary');
-  XLSX.writeFile(wb, projLabel().replace(/[^a-z0-9]/gi,'_') + '_Issue_Log.xlsx');
+// ── xlsx builder — JSZip + raw XML, full colour support ─────────────────────
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
 }
+function colLetter(n) {
+  return n<=26 ? String.fromCharCode(64+n) : String.fromCharCode(64+Math.floor((n-1)/26))+String.fromCharCode(65+(n-1)%26);
+}
+function xmlCell(col, row, val, style) {
+  return `<c r="${col}${row}" s="${style}" t="inlineStr"><is><t>${esc(val)}</t></is></c>`;
+}
+
+// Style indexes (must match cellXfs order in STYLES_XML below)
+const S = { TITLE:1, SUBTITLE:2, HEADER:3, EVEN:4, CLOSED:5, ODD:6, OPEN:7, SUM_TITLE:8, SUM_HDR:9, SUM_NORM:10, SUM_NUM:11 };
+
+const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<numFmts count="0"/>
+<fonts count="9">
+  <font><name val="Calibri"/><family val="2"/><sz val="11"/></font>
+  <font><name val="Arial"/><b/><color rgb="00FFFFFF"/><sz val="13"/></font>
+  <font><name val="Arial"/><color rgb="00FFFFFF"/><sz val="10"/></font>
+  <font><name val="Arial"/><b/><color rgb="00FFFFFF"/><sz val="10"/></font>
+  <font><name val="Arial"/><sz val="9"/></font>
+  <font><name val="Arial"/><color rgb="00375623"/><sz val="9"/></font>
+  <font><name val="Arial"/><color rgb="00CC0000"/><sz val="9"/></font>
+  <font><name val="Arial"/><b/><color rgb="001F4E79"/><sz val="10"/></font>
+  <font><name val="Arial"/><color rgb="00000000"/><sz val="10"/></font>
+</fonts>
+<fills count="7">
+  <fill><patternFill/></fill>
+  <fill><patternFill patternType="gray125"/></fill>
+  <fill><patternFill patternType="solid"><fgColor rgb="001F4E79"/><bgColor rgb="001F4E79"/></patternFill></fill>
+  <fill><patternFill patternType="solid"><fgColor rgb="002E75B6"/><bgColor rgb="002E75B6"/></patternFill></fill>
+  <fill><patternFill patternType="solid"><fgColor rgb="00DEEAF1"/><bgColor rgb="00DEEAF1"/></patternFill></fill>
+  <fill><patternFill patternType="solid"><fgColor rgb="00C6EFCE"/><bgColor rgb="00C6EFCE"/></patternFill></fill>
+  <fill><patternFill patternType="solid"><fgColor rgb="00FFB3B3"/><bgColor rgb="00FFB3B3"/></patternFill></fill>
+</fills>
+<borders count="2">
+  <border><left/><right/><top/><bottom/><diagonal/></border>
+  <border>
+    <left style="thin"><color rgb="00D0D0D0"/></left><right style="thin"><color rgb="00D0D0D0"/></right>
+    <top style="thin"><color rgb="00D0D0D0"/></top><bottom style="thin"><color rgb="00D0D0D0"/></bottom>
+  </border>
+</borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="12">
+  <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+  <xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+  <xf numFmtId="0" fontId="2" fillId="3" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+  <xf numFmtId="0" fontId="3" fillId="3" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+  <xf numFmtId="0" fontId="4" fillId="4" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>
+  <xf numFmtId="0" fontId="5" fillId="5" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>
+  <xf numFmtId="0" fontId="4" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>
+  <xf numFmtId="0" fontId="6" fillId="6" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>
+  <xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
+  <xf numFmtId="0" fontId="7" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left"/></xf>
+  <xf numFmtId="0" fontId="8" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left"/></xf>
+  <xf numFmtId="0" fontId="8" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="right"/></xf>
+</cellXfs>
+<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>`;
+
+const ISSUE_COLS   = ['Issue #','Sheet','Reviewer','Markup Type','Discipline','Issue Description','Response','Status','Priority','Assigned To','Due Date','Notes'];
+const ISSUE_WIDTHS = [10,13,22,16,13,60,50,10,13,20,12,30];
+const N_COLS = ISSUE_COLS.length;
+
+function buildIssueSheetXml(issues, label, principal, company) {
+  const openCount  = issues.filter(i => i.Status==='Open').length;
+  const lastCol    = colLetter(N_COLS);
+  const totalRows  = issues.length + 3;
+
+  const colsXml = ISSUE_WIDTHS.map((w,i) =>
+    `<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join('');
+
+  const sub = `Source: PDF Bluebeam Markups  |  Principal Reviewer: ${principal} (${company})  |  Total Issues: ${issues.length}  |  Open: ${openCount}  |  Closed: ${issues.length-openCount}`;
+
+  const row1 = `<row r="1" ht="27.75" customHeight="1">${xmlCell('A',1,label,S.TITLE)}</row>`;
+  const row2 = `<row r="2" ht="18" customHeight="1">${xmlCell('A',2,sub,S.SUBTITLE)}</row>`;
+  const hdrCells = ISSUE_COLS.map((col,i) => xmlCell(colLetter(i+1),3,col,S.HEADER)).join('');
+  const row3 = `<row r="3" ht="21.75" customHeight="1">${hdrCells}</row>`;
+
+  const dataRows = issues.map((iss, idx) => {
+    const r = idx + 4;
+    const base = idx % 2 === 0 ? S.EVEN : S.ODD;
+    const vals = [iss['Issue #']||'', iss['Sheet']||'', iss['Comment Author']||'',
+                  iss['Markup Type']||'', iss['Discipline']||'', iss['Issue Description']||'',
+                  iss['Response']||'', iss['Status']||'', iss['Priority']||'',
+                  iss['Assigned To']||'', iss['Due Date']||'', iss['Notes']||''];
+    const cells = vals.map((v,i) => {
+      let st = base;
+      if (i===7) st = iss.Status==='Open' ? S.OPEN : iss.Status==='Closed' ? S.CLOSED : base;
+      return xmlCell(colLetter(i+1), r, v, st);
+    }).join('');
+    return `<row r="${r}">${cells}</row>`;
+  }).join('');
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<dimension ref="A1:${lastCol}${totalRows}"/>
+<sheetViews><sheetView workbookViewId="0"><selection activeCell="A1" sqref="A1"/></sheetView></sheetViews>
+<sheetFormatPr baseColWidth="8" defaultRowHeight="15"/>
+<cols>${colsXml}</cols>
+<sheetData>${row1}${row2}${row3}${dataRows}</sheetData>
+<mergeCells count="2"><mergeCell ref="A1:${lastCol}1"/><mergeCell ref="A2:${lastCol}2"/></mergeCells>
+</worksheet>`;
+}
+
+function buildSummarySheetXml(allIssues, issuesByFile, hasMulti) {
+  const openCount = allIssues.filter(i => i.Status==='Open').length;
+
+  const count = (arr, key) => {
+    const m = {};
+    arr.forEach(i => { const v=i[key]||''; m[v]=(m[v]||0)+1; });
+    return Object.entries(m).sort((a,b)=>b[1]-a[1]);
+  };
+  const revs  = count(allIssues, 'Comment Author');
+  const discs = count(allIssues, 'Discipline');
+  const sheets = count(allIssues, 'Sheet').slice(0,10);
+
+  const rows = [];
+  // Row 1: title
+  rows.push(`<row r="1" ht="27.75" customHeight="1">${xmlCell('A',1,'Issue Log Summary',S.SUM_TITLE)}</row>`);
+  // Row 3: section headers
+  rows.push(`<row r="3">${xmlCell('A',3,'By Status',S.SUM_HDR)}${xmlCell('D',3,'By Reviewer',S.SUM_HDR)}</row>`);
+  // Rows 4-6: status + first 3 reviewers
+  [['Open',openCount],['Closed',allIssues.length-openCount],['Total',allIssues.length]].forEach(([lbl,val],i) => {
+    const rr = 4+i;
+    const rev = revs[i] ? xmlCell('D',rr,revs[i][0],S.SUM_NORM)+xmlCell('E',rr,String(revs[i][1]),S.SUM_NUM) : '';
+    rows.push(`<row r="${rr}">${xmlCell('A',rr,lbl,S.SUM_NORM)}${xmlCell('B',rr,String(val),S.SUM_NUM)}${rev}</row>`);
+  });
+  // Extra reviewers beyond first 3 — track last row used
+  let lastRevRow = 6;
+  revs.slice(3).forEach(([n,cnt],i) => {
+    lastRevRow = 7+i;
+    rows.push(`<row r="${lastRevRow}">${xmlCell('D',lastRevRow,n,S.SUM_NORM)}${xmlCell('E',lastRevRow,String(cnt),S.SUM_NUM)}</row>`);
+  });
+
+  // Discipline section starts after reviewers (never before row 9, no collisions)
+  const discRow = Math.max(9, lastRevRow + 2);
+  rows.push(`<row r="${discRow}">${xmlCell('A',discRow,'By Discipline',S.SUM_HDR)}${xmlCell('D',discRow,'By Sheet (Top 10)',S.SUM_HDR)}</row>`);
+  discs.forEach(([d,cnt],i) => {
+    const rr = discRow+1+i;
+    const sh = sheets[i] ? xmlCell('D',rr,sheets[i][0],S.SUM_NORM)+xmlCell('E',rr,String(sheets[i][1]),S.SUM_NUM) : '';
+    rows.push(`<row r="${rr}">${xmlCell('A',rr,d,S.SUM_NORM)}${xmlCell('B',rr,String(cnt),S.SUM_NUM)}${sh}</row>`);
+  });
+
+  // Per-PDF breakdown
+  if (hasMulti) {
+    const tabStart = discRow + Math.max(discs.length, sheets.length) + 3;
+    rows.push(`<row r="${tabStart}">${xmlCell('A',tabStart,'By PDF / Discipline Tab',S.SUM_HDR)}${xmlCell('B',tabStart,'Issues',S.SUM_HDR)}${xmlCell('D',tabStart,'Open',S.SUM_HDR)}${xmlCell('E',tabStart,'Closed',S.SUM_HDR)}</row>`);
+    Object.entries(issuesByFile).forEach(([fname,iss],i) => {
+      const rr = tabStart+1+i;
+      const tabOpen = iss.filter(x=>x.Status==='Open').length;
+      rows.push(`<row r="${rr}">${xmlCell('A',rr,fname,S.SUM_NORM)}${xmlCell('B',rr,String(iss.length),S.SUM_NUM)}${xmlCell('D',rr,String(tabOpen),S.SUM_NUM)}${xmlCell('E',rr,String(iss.length-tabOpen),S.SUM_NUM)}</row>`);
+    });
+  }
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<dimension ref="A1:E50"/>
+<sheetViews><sheetView workbookViewId="0"/></sheetViews>
+<sheetFormatPr baseColWidth="8" defaultRowHeight="15"/>
+<cols>
+  <col min="1" max="1" width="36" customWidth="1"/>
+  <col min="2" max="2" width="10" customWidth="1"/>
+  <col min="3" max="3" width="4"  customWidth="1"/>
+  <col min="4" max="4" width="32" customWidth="1"/>
+  <col min="5" max="5" width="10" customWidth="1"/>
+</cols>
+<sheetData>${rows.join('')}</sheetData>
+<mergeCells count="1"><mergeCell ref="A1:E1"/></mergeCells>
+</worksheet>`;
+}
+
+async function downloadExcel() {
+  try {
+    if (typeof JSZip === 'undefined') { alert('JSZip library not loaded — check internet connection.'); return; }
+    if (!allIssues.length) { alert('No issues to export.'); return; }
+
+    const label     = projLabel();
+    const principal = document.getElementById('principal-reviewer').value || '—';
+    const company   = document.getElementById('reviewer-company').value   || 'Marcon';
+    const fileNames = currentFiles.map(f => f.name.replace(/\.pdf$/i,''));
+
+    // Group issues by source file
+    const issuesByFile = {};
+    for (const fname of fileNames) issuesByFile[fname] = [];
+    for (const issue of allIssues) {
+      const src = issue['Source File'] || fileNames[0] || 'Issues';
+      if (!issuesByFile[src]) issuesByFile[src] = [];
+      issuesByFile[src].push(issue);
+    }
+
+    const hasMulti = currentFiles.length > 1;
+    const sheetDefs = []; // {name, xml}
+
+    // Tab name deduplication
+    const usedNames = {};
+    function uniqueName(name) {
+      let base = name.replace(/_IFT_Progress_Set$/i,'').replace(/_Progress_Set$/i,'').replace(/_Set$/i,'').trim();
+      if (base.length > 28) base = base.substring(0,28);
+      if (!usedNames[base]) { usedNames[base]=1; return base; }
+      return base.substring(0,25)+'_'+(++usedNames[base]);
+    }
+
+    if (hasMulti) {
+      for (const [fname, issues] of Object.entries(issuesByFile)) {
+        sheetDefs.push({ name: uniqueName(fname), xml: buildIssueSheetXml(issues, `${label} — ${fname}`, principal, company) });
+      }
+    } else {
+      sheetDefs.push({ name: 'Coordination Issue Log', xml: buildIssueSheetXml(allIssues, label, principal, company) });
+    }
+    sheetDefs.push({ name: 'Summary', xml: buildSummarySheetXml(allIssues, issuesByFile, hasMulti) });
+
+    // Build workbook XML
+    const sheetsEl = sheetDefs.map((s,i) =>
+      `<sheet xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" name="${esc(s.name)}" sheetId="${i+1}" r:id="rId${i+1}"/>`
+    ).join('');
+    const workbookXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<bookViews><workbookView/></bookViews>
+<sheets>${sheetsEl}</sheets>
+</workbook>`;
+
+    const themeXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Office Theme"><a:themeElements><a:clrScheme name="Office"><a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1><a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="1F497D"/></a:dk2><a:lt2><a:srgbClr val="EEECE1"/></a:lt2><a:accent1><a:srgbClr val="4F81BD"/></a:accent1><a:accent2><a:srgbClr val="C0504D"/></a:accent2><a:accent3><a:srgbClr val="9BBB59"/></a:accent3><a:accent4><a:srgbClr val="8064A2"/></a:accent4><a:accent5><a:srgbClr val="4BACC6"/></a:accent5><a:accent6><a:srgbClr val="F79646"/></a:accent6><a:hlink><a:srgbClr val="0000FF"/></a:hlink><a:folHlink><a:srgbClr val="800080"/></a:folHlink></a:clrScheme><a:fontScheme name="Office"><a:majorFont><a:latin typeface="Cambria"/><a:ea typeface=""/><a:cs typeface=""/></a:majorFont><a:minorFont><a:latin typeface="Calibri"/><a:ea typeface=""/><a:cs typeface=""/></a:minorFont></a:fontScheme><a:fmtScheme name="Office"><a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w="9525"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln><a:ln w="25400"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln><a:ln w="38100"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst><a:outerShdw blurRad="40000" dist="23000" dir="5400000" rotWithShape="0"><a:srgbClr val="000000"><a:alpha val="35000"/></a:srgbClr></a:outerShdw></a:effectLst></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme></a:themeElements></a:theme>`;
+
+    const nSheets = sheetDefs.length;
+    const sheetRels = sheetDefs.map((s,i) =>
+      `<Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="/xl/worksheets/sheet${i+1}.xml" Id="rId${i+1}"/>`
+    ).join('');
+    const wbRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+${sheetRels}
+<Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml" Id="rId${nSheets+1}"/>
+<Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="theme/theme1.xml" Id="rId${nSheets+2}"/>
+</Relationships>`;
+
+    const sheetCT = sheetDefs.map((_,i) =>
+      `<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`
+    ).join('');
+    const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+<Override PartName="/xl/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>
+${sheetCT}
+</Types>`;
+
+    const rootRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml" Id="rId1"/>
+</Relationships>`;
+
+    // Zip and download
+    const zip = new JSZip();
+    zip.file('[Content_Types].xml', contentTypes);
+    zip.file('_rels/.rels', rootRels);
+    zip.file('xl/workbook.xml', workbookXml);
+    zip.file('xl/_rels/workbook.xml.rels', wbRels);
+    zip.file('xl/styles.xml', STYLES_XML);
+    zip.file('xl/theme/theme1.xml', themeXml);
+    sheetDefs.forEach((s,i) => zip.file(`xl/worksheets/sheet${i+1}.xml`, s.xml));
+
+    const blob = await zip.generateAsync({type:'blob'});
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = label.replace(/[^a-z0-9]/gi,'_') + '_Issue_Log.xlsx';
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
+
+  } catch(err) {
+    alert('Excel download failed: ' + err.message);
+    console.error(err);
+  }
+}
+
 </script>
 </body>
 </html>
