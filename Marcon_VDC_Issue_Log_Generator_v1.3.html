@@ -135,6 +135,7 @@
       </div>
       <div class="err-box" id="err-box"></div>
     </div>
+
   </aside>
   <main class="main">
     <div class="empty-state" id="empty-state">
@@ -340,8 +341,9 @@ document.getElementById('generate-btn').addEventListener('click', async () => {
           const LABEL_RE = /^(drawing\s*(no\.?|number|num\.?|#)|dwg\.?\s*(no\.?|#|num\.?)|sheet\s*(no\.?|number|num\.?|#)?|sheet\s*id|number|no\.)$/i;
 
           // Sheet number value pattern — standard architectural/engineering formats:
-          // A0.00, E-501, M-200, D0A.02, S-100, L1.01, C3.02A, SK-01, etc.
-          const SHEET_VAL_RE = /^[A-Z]{1,3}-?\d+[A-Z]?(?:[.\-]\d+[A-Z]?)?$/;
+          // A0.00, E-501, M-200, D0A.02, S-100, L1.01, C3.02A, SK-01, A2.00.1, etc.
+          // Allows multiple dot/dash-separated segments (e.g. A2.00.1, C3.02A.1)
+          const SHEET_VAL_RE = /^[A-Z]{1,3}-?\d+[A-Z]?(?:[.\-]\d+[A-Z]?){0,3}$/;
 
           // Step 1: collect all text items with their bounding boxes
           const items = tc.items.map(item => ({
@@ -359,25 +361,25 @@ document.getElementById('generate-btn').addEventListener('click', async () => {
 
           if (labelItems.length > 0) {
             // For each label, search for the nearest sheet-number-pattern token.
-            // "Nearest" = closest centre-to-centre distance, but biased to tokens
-            // that are within ±2× the label height vertically and ±8× horizontally
-            // (covers both "value above label" and "value below label" layouts).
+            // Use generous tolerances — title blocks vary widely in spacing.
+            // Vertical: up to 80pts (covers large font values rendered far from label).
+            // Horizontal: up to 200pts (covers side-by-side label:value layouts).
             let bestDist = Infinity;
 
             for (const lbl of labelItems) {
               const lblCX = lbl.x + lbl.w / 2;
               const lblCY = lbl.y + lbl.h / 2;
-              const hTol  = Math.max(lbl.h * 2.5, 20);   // vertical tolerance
-              const vTol  = Math.max(lbl.w * 8,   120);  // horizontal tolerance
+              const dyTol = 80;   // pts vertical tolerance
+              const dxTol = 200;  // pts horizontal tolerance
 
               for (const it of items) {
                 if (!SHEET_VAL_RE.test(it.str)) continue;
-                if (/^[PWpw]/.test(it.str))     continue; // skip P1, W2 false positives
+                if (/^[PWpw]\d+$/.test(it.str)) continue; // skip P1, P2, W1 false positives
                 const itCX = it.x + it.w / 2;
                 const itCY = it.y + it.h / 2;
                 const dx   = Math.abs(itCX - lblCX);
                 const dy   = Math.abs(itCY - lblCY);
-                if (dx > vTol || dy > hTol) continue;
+                if (dx > dxTol || dy > dyTol) continue;
                 const dist = Math.sqrt(dx*dx + dy*dy);
                 if (dist < bestDist) { bestDist = dist; anchoredMatch = it.str; }
               }
@@ -393,7 +395,7 @@ document.getElementById('generate-btn').addEventListener('click', async () => {
             let bestX = -Infinity, fallback = null;
             for (const it of items) {
               if (!SHEET_VAL_RE.test(it.str)) continue;
-              if (/^[PWpw]/.test(it.str))     continue;
+              if (/^[PWpw]\d+$/.test(it.str)) continue;
               if (it.y > bottomZoneY)          continue; // above bottom 15% band
               if (it.x > bestX) { bestX = it.x; fallback = it.str; }
             }
