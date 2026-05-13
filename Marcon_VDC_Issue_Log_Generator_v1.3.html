@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Marcon VDC — Bluebeam Issue Log Generator</title>
+  <title>Marcon VDC — Bluebeam Issue Log Generator v1.6.0</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -101,7 +101,7 @@
   <div class="topbar-sep"></div>
   <span class="topbar-title">VDC — Bluebeam Issue Log Generator</span>
   <div class="topbar-spacer"></div>
-  <span class="topbar-version">v1.5</span>
+  <span class="topbar-version">v1.6</span>
 </div>
 <div class="layout">
   <aside class="sidebar">
@@ -314,8 +314,11 @@ document.getElementById('generate-btn').addEventListener('click', async () => {
       const annots = await page.getAnnotations();
 
       // ── Sheet number extraction ────────────────────────────────────────────
-      // Priority 1: PDF page label (set by Bluebeam/AutoCAD, most reliable)
-      // Priority 2: Rightmost sheet-number-pattern text in text layer (title block bottom-right)
+      // Priority 1: PDF page label (set by Bluebeam/AutoCAD during publish — most reliable)
+      // Priority 2: Title-block anchor search — find a "Drawing No." / "Sheet" label in the
+      //             text layer then grab the value token that is spatially closest to it.
+      //             This avoids picking up random numbers from the drawing body.
+      // Priority 3: Last resort — rightmost sheet-pattern token in bottom 15% of page.
       let sheet = `P${i}`;
       try {
         const lbl = await page.getPageLabel();
@@ -325,22 +328,77 @@ document.getElementById('generate-btn').addEventListener('click', async () => {
         }
       } catch(e) {}
 
-      // Fallback: scan text layer for sheet number patterns, pick rightmost occurrence
-      // (title block is bottom-right, so highest X coordinate = most likely sheet number)
       if (sheet === `P${i}`) {
         try {
           const tc = await page.getTextContent();
-          // Sheet number formats: A0.00, E-501, M-200, D0A.02, S-100, L1.01, etc.
-          const SHEET_RE = /^[A-Z]{1,2}-?\d+[A-Z]?(?:[.\-]\d+[A-Z]?)?$/;
-          let bestX = -Infinity, bestMatch = null;
-          for (const item of tc.items) {
-            const t = (item.str || '').trim();
-            if (!SHEET_RE.test(t)) continue;
-            if (/^[PW]/.test(t)) continue;   // skip false positives like P1.03, W1
-            const x = item.transform ? item.transform[4] : 0;
-            if (x > bestX) { bestX = x; bestMatch = t; }
+          const vp = page.view; // [x, y, width, height]
+          const pgH = vp[3];
+          const pgW = vp[2];
+
+          // Title-block label keywords (case-insensitive).
+          // These appear directly above or below the actual sheet number in title blocks.
+          const LABEL_RE = /^(drawing\s*(no\.?|number|num\.?|#)|dwg\.?\s*(no\.?|#|num\.?)|sheet\s*(no\.?|number|num\.?|#)?|sheet\s*id|number|no\.)$/i;
+
+          // Sheet number value pattern — standard architectural/engineering formats:
+          // A0.00, E-501, M-200, D0A.02, S-100, L1.01, C3.02A, SK-01, etc.
+          const SHEET_VAL_RE = /^[A-Z]{1,3}-?\d+[A-Z]?(?:[.\-]\d+[A-Z]?)?$/;
+
+          // Step 1: collect all text items with their bounding boxes
+          const items = tc.items.map(item => ({
+            str:  (item.str || '').trim(),
+            x:    item.transform ? item.transform[4] : 0,
+            y:    item.transform ? item.transform[5] : 0,
+            w:    item.width  || 0,
+            h:    item.height || 0,
+          }));
+
+          // Step 2: find all title-block label tokens
+          const labelItems = items.filter(it => LABEL_RE.test(it.str));
+
+          let anchoredMatch = null;
+
+          if (labelItems.length > 0) {
+            // For each label, search for the nearest sheet-number-pattern token.
+            // "Nearest" = closest centre-to-centre distance, but biased to tokens
+            // that are within ±2× the label height vertically and ±8× horizontally
+            // (covers both "value above label" and "value below label" layouts).
+            let bestDist = Infinity;
+
+            for (const lbl of labelItems) {
+              const lblCX = lbl.x + lbl.w / 2;
+              const lblCY = lbl.y + lbl.h / 2;
+              const hTol  = Math.max(lbl.h * 2.5, 20);   // vertical tolerance
+              const vTol  = Math.max(lbl.w * 8,   120);  // horizontal tolerance
+
+              for (const it of items) {
+                if (!SHEET_VAL_RE.test(it.str)) continue;
+                if (/^[PWpw]/.test(it.str))     continue; // skip P1, W2 false positives
+                const itCX = it.x + it.w / 2;
+                const itCY = it.y + it.h / 2;
+                const dx   = Math.abs(itCX - lblCX);
+                const dy   = Math.abs(itCY - lblCY);
+                if (dx > vTol || dy > hTol) continue;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                if (dist < bestDist) { bestDist = dist; anchoredMatch = it.str; }
+              }
+            }
           }
-          if (bestMatch) sheet = bestMatch;
+
+          if (anchoredMatch) {
+            sheet = anchoredMatch;
+          } else {
+            // Priority 3: no label anchor found — restrict to bottom 15% of page
+            // (title block zone) and pick rightmost valid sheet-number token.
+            const bottomZoneY = pgH * 0.15; // coordinates are from bottom-left in PDF space
+            let bestX = -Infinity, fallback = null;
+            for (const it of items) {
+              if (!SHEET_VAL_RE.test(it.str)) continue;
+              if (/^[PWpw]/.test(it.str))     continue;
+              if (it.y > bottomZoneY)          continue; // above bottom 15% band
+              if (it.x > bestX) { bestX = it.x; fallback = it.str; }
+            }
+            if (fallback) sheet = fallback;
+          }
         } catch(e) {}
       }
 
