@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Marcon VDC — Bluebeam Issue Log Generator v1.7.0</title>
+  <title>Marcon VDC — Bluebeam Issue Log Generator v1.7.1</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -103,7 +103,7 @@
   <div class="topbar-sep"></div>
   <span class="topbar-title">VDC — Bluebeam Issue Log Generator</span>
   <div class="topbar-spacer"></div>
-  <span class="topbar-version">v1.7</span>
+  <span class="topbar-version">v1.7.1</span>
 </div>
 <div class="layout">
   <aside class="sidebar">
@@ -746,6 +746,7 @@ function buildIssueSheetXml(issues, label, principal, company) {
 <sheetFormatPr baseColWidth="8" defaultRowHeight="15"/>
 <cols>${colsXml}</cols>
 <sheetData>${row1}${row2}${row3}${dataRows}</sheetData>
+<autoFilter ref="A3:${lastCol}3"/>
 <mergeCells count="2"><mergeCell ref="A1:${lastCol}1"/><mergeCell ref="A2:${lastCol}2"/></mergeCells>
 </worksheet>`;
 }
