@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Marcon VDC — Bluebeam Issue Log Generator v1.6.0</title>
+  <title>Marcon VDC — Bluebeam Issue Log Generator v1.7.0</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-    :root{--blue:#1F4E79;--blue-mid:#2E75B6;--blue-light:#D6E8F7;--blue-pale:#EEF5FC;--green:#375623;--green-light:#C6EFCE;--red:#CC0000;--red-light:#FFB3B3;--text:#1a1a1a;--text-muted:#6b6b6b;--text-faint:#9b9b9b;--border:#e0e0e0;--border-mid:#c8c8c8;--bg:#ffffff;--bg-off:#f7f7f5;--bg-alt:#f0f0ed;--r-sm:6px;--r-md:10px;--r-lg:14px}
+    :root{--blue:#1F4E79;--blue-mid:#2E75B6;--blue-light:#D6E8F7;--blue-pale:#EEF5FC;--green:#375623;--green-light:#C6EFCE;--red:#CC0000;--red-light:#FFB3B3;--amber:#7D4E00;--amber-light:#FFE8A0;--text:#1a1a1a;--text-muted:#6b6b6b;--text-faint:#9b9b9b;--border:#e0e0e0;--border-mid:#c8c8c8;--bg:#ffffff;--bg-off:#f7f7f5;--bg-alt:#f0f0ed;--r-sm:6px;--r-md:10px;--r-lg:14px}
     body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;font-size:14px;color:var(--text);background:var(--bg-off);min-height:100vh;line-height:1.5}
     .topbar{background:var(--blue);padding:0 2rem;height:52px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.18)}
     .topbar-logo{font-size:13px;font-weight:600;color:rgba(255,255,255,.95);letter-spacing:.08em;text-transform:uppercase}
@@ -50,12 +50,13 @@
     .empty-state .es-icon{font-size:48px;margin-bottom:1rem;opacity:.25}
     .empty-state h2{font-size:16px;font-weight:500;color:var(--text-muted);margin-bottom:6px}
     .empty-state p{font-size:13px;max-width:340px;line-height:1.6}
-    .stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:1.5rem}
+    .stats-row{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:1.5rem}
     .stat-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--r-md);padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
     .stat-card .slabel{font-size:11px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px}
     .stat-card .sval{font-size:28px;font-weight:600;color:var(--text);line-height:1}
     .stat-card.s-open .sval{color:var(--red)}
     .stat-card.s-closed .sval{color:#2e7d32}
+    .stat-card.s-review .sval{color:var(--amber)}
     .stat-card.s-total .sval{color:var(--blue)}
     .authors-panel{background:var(--bg);border:1px solid var(--border);border-radius:var(--r-md);padding:14px 16px;margin-bottom:1.5rem;box-shadow:0 1px 3px rgba(0,0,0,.08)}
     .authors-panel h3{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text-faint);margin-bottom:10px}
@@ -79,6 +80,7 @@
     .badge{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;white-space:nowrap}
     .badge-open{background:var(--red-light);color:var(--red)}
     .badge-closed{background:var(--green-light);color:var(--green)}
+    .badge-in.review{background:var(--amber-light);color:var(--amber)}
     .disc-tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:var(--r-sm);background:var(--bg-alt);color:var(--text-muted);border:1px solid var(--border)}
     .pagination{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-muted);margin-bottom:1.5rem}
     .pagination button{border:1px solid var(--border);background:var(--bg);border-radius:var(--r-sm);padding:5px 12px;font-size:12px;cursor:pointer;color:var(--text)}
@@ -101,7 +103,7 @@
   <div class="topbar-sep"></div>
   <span class="topbar-title">VDC — Bluebeam Issue Log Generator</span>
   <div class="topbar-spacer"></div>
-  <span class="topbar-version">v1.6</span>
+  <span class="topbar-version">v1.7</span>
 </div>
 <div class="layout">
   <aside class="sidebar">
@@ -148,7 +150,7 @@
       <div class="authors-panel"><h3>Detected authors</h3><div class="author-chips" id="author-chips"></div></div>
       <div class="toolbar">
         <input type="text" id="search" placeholder="Search issues, sheets, authors…">
-        <select id="f-status"><option value="">All statuses</option><option>Open</option><option>Closed</option></select>
+        <select id="f-status"><option value="">All statuses</option><option>Open</option><option>In Review</option><option>Closed</option></select>
         <select id="f-disc"><option value="">All disciplines</option></select>
         <select id="f-sheet"><option value="">All sheets</option></select>
         <select id="f-author"><option value="">All authors</option></select>
@@ -260,17 +262,57 @@ function clearFiles() {
   hideErr();
 }
 // ── Response detection ─────────────────────────────────────────────────────
-const RESP_PAT = [
-  /^[\w\s]{0,20}response\s*:/i, /^(response|reply)\s*:/i,
-  /^noted[.,\s]/i, /^acknowledged/i,
+// Three-tier status logic:
+//   Closed    — reply clearly confirms/accepts/resolves the issue
+//   In Review — reply exists but is ambiguous or just acknowledges
+//   Open      — no reply at all
+
+// Patterns that CONFIRM closure (Closed)
+const CLOSED_PAT = [
+  /^(yes|yep|yes,|yes\.|okay|ok|o\.k\.)[,.\s]/i,
+  /^(yes|okay|ok|sure|agreed|correct|confirmed|understood|acknowledged)[.!]?\s*$/i,
+  /^(this is okay|that('s| is) (okay|fine|correct|good|acceptable))/i,
+  /^(noted|noted\.|noted,)/i,
+  /^acknowledged/i,
+  /^confirmed[.,\s!]/i,
+  /^(resolved|fixed|corrected|addressed|updated|revised|incorporated|included|added)/i,
   /^will (be |address|revise|update|coordinate|include|provide|confirm)/i,
   /^(to be|to) (addressed|resolved|updated|revised|coordinated)/i,
   /^(incorporated|included|added|corrected|fixed|resolved) (in|on|per|as)/i,
-  /^(updated|revised) (per|as|in)/i, /^confirmed[.,\s]/i,
+  /^(updated|revised) (per|as|in)/i,
   /^see (sheet|drawing|detail|revised)/i,
   /^refer to (detail|sheet|drawing)/i,
+  /^(thank you|thanks).{0,40}(okay|ok|fine|noted|correct|resolved|will)/i,
+  /[\w\s]{0,20}response\s*:/i,
+  /^(response|reply)\s*:/i,
 ];
-function isResp(c) { return RESP_PAT.some(p => p.test(c.trim())); }
+
+// Patterns that suggest ambiguity / need more review (In Review)
+const REVIEW_PAT = [
+  /^(can you|could you|please (clarify|confirm|check|verify|review|advise))/i,
+  /^(not sure|unclear|need(s)? (more|further|clarification|info))/i,
+  /^(to be (discussed|reviewed|confirmed|coordinated))/i,
+  /^(pending|tbc|tbd|hold|defer)/i,
+  /^(we (will|are) (review|look|check|follow))/i,
+  /^(in progress|being (reviewed|addressed|coordinated))/i,
+  /^(question|query|clarification needed)/i,
+];
+
+function classifyResponse(content) {
+  const c = content.trim();
+  if (!c) return null; // no response
+  if (CLOSED_PAT.some(p => p.test(c))) return 'Closed';
+  if (REVIEW_PAT.some(p => p.test(c))) return 'In Review';
+  // Short replies (≤12 words) that don't match ambiguous patterns
+  // are likely simple acknowledgements — treat as Closed
+  const wordCount = c.split(/\s+/).length;
+  if (wordCount <= 12) return 'Closed';
+  // Longer replies without a clear pattern → In Review
+  return 'In Review';
+}
+
+// Legacy helper kept for backwards compat (used nowhere new)
+function isResp(c) { return CLOSED_PAT.some(p => p.test(c.trim())); }
 
 function disc(c) {
   const k = c.toLowerCase();
@@ -404,26 +446,71 @@ document.getElementById('generate-btn').addEventListener('click', async () => {
         } catch(e) {}
       }
 
-      // Filter out link annotations, no-content annotations, and AutoCAD SHX text.
-      // SHX text is created by AutoCAD during DWG→PDF export — not real reviewer markups.
+      // ── Annotation processing ──────────────────────────────────────────────
+      // Bluebeam stores replies as annotations with inReplyTo set to the parent's id.
+      // We use this to build a proper parent→replies map rather than guessing by content.
       const pa = annots
         .filter(a => a.subtype !== 'Link')
-        .map(a => ({ content: getContent(a), author: getAuthor(a), subject: getSubject(a), sheet, page: i }))
+        .map(a => ({
+          id:        a.id || '',
+          inReplyTo: a.inReplyTo || '',
+          content:   getContent(a),
+          author:    getAuthor(a),
+          subject:   getSubject(a),
+          sheet, page: i
+        }))
         .filter(a => a.content.length > 0)
         .filter(a => !/^AutoCAD SHX Text$/i.test(a.author) && !/shx/i.test(a.subject));
 
-      const pageIss  = pa.filter(a => !isResp(a.content));
-      const pageResp = pa.filter(a =>  isResp(a.content));
+      // Build id→annotation map and separate parent issues from replies
+      const annotById = {};
+      for (const a of pa) if (a.id) annotById[a.id] = a;
+
+      // Collect all replies (have inReplyTo pointing to a known parent)
+      const replyIds = new Set(pa.filter(a => a.inReplyTo && annotById[a.inReplyTo]).map(a => a.id));
+
+      // Parent annotations = anything that is NOT itself a reply
+      const parentAnnots = pa.filter(a => !a.inReplyTo || !annotById[a.inReplyTo]);
+
+      // Build replies map: parentId → array of reply annotations (sorted by position in list = chronological)
+      const repliesMap = {};
+      for (const a of pa) {
+        if (a.inReplyTo && annotById[a.inReplyTo]) {
+          if (!repliesMap[a.inReplyTo]) repliesMap[a.inReplyTo] = [];
+          repliesMap[a.inReplyTo].push(a);
+        }
+      }
+
+      // Fallback: if no inReplyTo relationships exist (older PDF or flat export),
+      // fall back to content-pattern matching as before
+      const hasReplyStructure = Object.keys(repliesMap).length > 0;
+      const pageIss  = hasReplyStructure ? parentAnnots : pa.filter(a => !isResp(a.content));
+      const pageResp = hasReplyStructure ? null         : pa.filter(a =>  isResp(a.content));
 
       for (const iss of pageIss) {
-        const resp = pageResp[0] || null;
-        let respText = '', respondent = '';
-        if (resp) {
-          respondent = resp.author;
-          respText   = resp.content
-            .replace(/^[\w\s]{0,25}response\s*:\s*/i, '')
-            .replace(/^(response|reply)\s*:\s*/i, '')
-            .trim();
+        let respText = '', respondent = '', status = 'Open';
+
+        if (hasReplyStructure) {
+          // Use the proper reply chain for this annotation
+          const replies = repliesMap[iss.id] || [];
+          if (replies.length > 0) {
+            // Combine all reply content for display; use last reply for status
+            respondent = replies.map(r => r.author).filter((v,i,a)=>a.indexOf(v)===i).join(', ');
+            respText   = replies.map(r => r.content).join(' | ');
+            // Classify based on the last reply (most recent)
+            status = classifyResponse(replies[replies.length - 1].content) || 'Open';
+          }
+        } else {
+          // Legacy fallback path
+          const resp = pageResp[0] || null;
+          if (resp) {
+            respondent = resp.author;
+            respText   = resp.content
+              .replace(/^[\w\s]{0,25}response\s*:\s*/i, '')
+              .replace(/^(response|reply)\s*:\s*/i, '')
+              .trim();
+            status = classifyResponse(respText) || 'Open';
+          }
         }
         issues.push({
           'Issue #':            `CI-${String(num).padStart(3,'0')}`,
@@ -437,7 +524,7 @@ document.getElementById('generate-btn').addEventListener('click', async () => {
           'Issue Description':  iss.content,
           'Respondent':         respondent,
           'Response':           respText,
-          'Status':             respText ? 'Closed' : 'Open',
+          'Status':             status,
           'Priority':           '',
           'Assigned To':        '',
           'Due Date':           '',
@@ -472,11 +559,13 @@ function renderResults(cA, rA) {
   document.getElementById('empty-state').style.display = 'none';
   document.getElementById('results').style.display = 'block';
   const open   = allIssues.filter(i => i.Status==='Open').length;
+  const review = allIssues.filter(i => i.Status==='In Review').length;
   const sheets = new Set(allIssues.map(i => i.Sheet)).size;
   document.getElementById('stats-row').innerHTML = `
     <div class="stat-card s-total"><div class="slabel">Total issues</div><div class="sval">${allIssues.length}</div></div>
     <div class="stat-card s-open"><div class="slabel">Open</div><div class="sval">${open}</div></div>
-    <div class="stat-card s-closed"><div class="slabel">Closed</div><div class="sval">${allIssues.length-open}</div></div>
+    <div class="stat-card s-review"><div class="slabel">In Review</div><div class="sval">${review}</div></div>
+    <div class="stat-card s-closed"><div class="slabel">Closed</div><div class="sval">${allIssues.length-open-review}</div></div>
     <div class="stat-card"><div class="slabel">Sheets affected</div><div class="sval">${sheets}</div></div>`;
   let chips = '';
   for (const [n,c] of Object.entries(cA).sort((a,b)=>b[1]-a[1]))
@@ -518,7 +607,7 @@ function renderTable() {
     <td><span class="disc-tag">${i.Discipline}</span></td>
     <td>${i['Issue Description'].substring(0,160)}${i['Issue Description'].length>160?'…':''}</td>
     <td style="font-size:12px;color:var(--text-muted)">${i.Respondent||'—'}</td>
-    <td><span class="badge badge-${i.Status.toLowerCase()}">${i.Status}</span></td>
+    <td><span class="badge badge-${i.Status==='In Review'?'in review':i.Status.toLowerCase()}">${i.Status}</span></td>
   </tr>`).join('');
   const total = Math.max(1, Math.ceil(filteredIssues.length/PAGE));
   document.getElementById('page-info').textContent  = `Page ${currentPage} of ${total}`;
@@ -558,12 +647,12 @@ function xmlCell(col, row, val, style) {
 }
 
 // Style indexes (must match cellXfs order in STYLES_XML below)
-const S = { TITLE:1, SUBTITLE:2, HEADER:3, EVEN:4, CLOSED:5, ODD:6, OPEN:7, SUM_TITLE:8, SUM_HDR:9, SUM_NORM:10, SUM_NUM:11 };
+const S = { TITLE:1, SUBTITLE:2, HEADER:3, EVEN:4, CLOSED:5, ODD:6, OPEN:7, SUM_TITLE:8, SUM_HDR:9, SUM_NORM:10, SUM_NUM:11, REVIEW:12 };
 
 const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
 <numFmts count="0"/>
-<fonts count="9">
+<fonts count="10">
   <font><name val="Calibri"/><family val="2"/><sz val="11"/></font>
   <font><name val="Arial"/><b/><color rgb="00FFFFFF"/><sz val="13"/></font>
   <font><name val="Arial"/><color rgb="00FFFFFF"/><sz val="10"/></font>
@@ -573,8 +662,9 @@ const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
   <font><name val="Arial"/><color rgb="00CC0000"/><sz val="9"/></font>
   <font><name val="Arial"/><b/><color rgb="001F4E79"/><sz val="10"/></font>
   <font><name val="Arial"/><color rgb="00000000"/><sz val="10"/></font>
+  <font><name val="Arial"/><color rgb="007D4E00"/><sz val="9"/></font>
 </fonts>
-<fills count="7">
+<fills count="8">
   <fill><patternFill/></fill>
   <fill><patternFill patternType="gray125"/></fill>
   <fill><patternFill patternType="solid"><fgColor rgb="001F4E79"/><bgColor rgb="001F4E79"/></patternFill></fill>
@@ -582,6 +672,7 @@ const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
   <fill><patternFill patternType="solid"><fgColor rgb="00DEEAF1"/><bgColor rgb="00DEEAF1"/></patternFill></fill>
   <fill><patternFill patternType="solid"><fgColor rgb="00C6EFCE"/><bgColor rgb="00C6EFCE"/></patternFill></fill>
   <fill><patternFill patternType="solid"><fgColor rgb="00FFB3B3"/><bgColor rgb="00FFB3B3"/></patternFill></fill>
+  <fill><patternFill patternType="solid"><fgColor rgb="00FFE8A0"/><bgColor rgb="00FFE8A0"/></patternFill></fill>
 </fills>
 <borders count="2">
   <border><left/><right/><top/><bottom/><diagonal/></border>
@@ -591,7 +682,7 @@ const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
   </border>
 </borders>
 <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-<cellXfs count="12">
+<cellXfs count="13">
   <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
   <xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
   <xf numFmtId="0" fontId="2" fillId="3" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
@@ -604,6 +695,7 @@ const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
   <xf numFmtId="0" fontId="7" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left"/></xf>
   <xf numFmtId="0" fontId="8" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left"/></xf>
   <xf numFmtId="0" fontId="8" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="right"/></xf>
+  <xf numFmtId="0" fontId="9" fillId="7" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>
 </cellXfs>
 <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 </styleSheet>`;
@@ -613,14 +705,15 @@ const ISSUE_WIDTHS = [10,13,22,16,13,60,50,10,13,20,12,30];
 const N_COLS = ISSUE_COLS.length;
 
 function buildIssueSheetXml(issues, label, principal, company) {
-  const openCount  = issues.filter(i => i.Status==='Open').length;
+  const openCount   = issues.filter(i => i.Status==='Open').length;
+  const reviewCount = issues.filter(i => i.Status==='In Review').length;
   const lastCol    = colLetter(N_COLS);
   const totalRows  = issues.length + 3;
 
   const colsXml = ISSUE_WIDTHS.map((w,i) =>
     `<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join('');
 
-  const sub = `Source: PDF Bluebeam Markups  |  Principal Reviewer: ${principal} (${company})  |  Total Issues: ${issues.length}  |  Open: ${openCount}  |  Closed: ${issues.length-openCount}`;
+  const sub = `Source: PDF Bluebeam Markups  |  Principal Reviewer: ${principal} (${company})  |  Total Issues: ${issues.length}  |  Open: ${openCount}  |  In Review: ${reviewCount}  |  Closed: ${issues.length-openCount-reviewCount}`;
 
   const row1 = `<row r="1" ht="27.75" customHeight="1">${xmlCell('A',1,label,S.TITLE)}</row>`;
   const row2 = `<row r="2" ht="18" customHeight="1">${xmlCell('A',2,sub,S.SUBTITLE)}</row>`;
@@ -636,7 +729,11 @@ function buildIssueSheetXml(issues, label, principal, company) {
                   iss['Assigned To']||'', iss['Due Date']||'', iss['Notes']||''];
     const cells = vals.map((v,i) => {
       let st = base;
-      if (i===7) st = iss.Status==='Open' ? S.OPEN : iss.Status==='Closed' ? S.CLOSED : base;
+      if (i===7) {
+        if (iss.Status==='Open')      st = S.OPEN;
+        else if (iss.Status==='Closed')    st = S.CLOSED;
+        else if (iss.Status==='In Review') st = S.REVIEW;
+      }
       return xmlCell(colLetter(i+1), r, v, st);
     }).join('');
     return `<row r="${r}">${cells}</row>`;
@@ -654,7 +751,9 @@ function buildIssueSheetXml(issues, label, principal, company) {
 }
 
 function buildSummarySheetXml(allIssues, issuesByFile, hasMulti) {
-  const openCount = allIssues.filter(i => i.Status==='Open').length;
+  const openCount   = allIssues.filter(i => i.Status==='Open').length;
+  const reviewCount = allIssues.filter(i => i.Status==='In Review').length;
+  const closedCount = allIssues.length - openCount - reviewCount;
 
   const count = (arr, key) => {
     const m = {};
@@ -670,21 +769,21 @@ function buildSummarySheetXml(allIssues, issuesByFile, hasMulti) {
   rows.push(`<row r="1" ht="27.75" customHeight="1">${xmlCell('A',1,'Issue Log Summary',S.SUM_TITLE)}</row>`);
   // Row 3: section headers
   rows.push(`<row r="3">${xmlCell('A',3,'By Status',S.SUM_HDR)}${xmlCell('D',3,'By Reviewer',S.SUM_HDR)}</row>`);
-  // Rows 4-6: status + first 3 reviewers
-  [['Open',openCount],['Closed',allIssues.length-openCount],['Total',allIssues.length]].forEach(([lbl,val],i) => {
+  // Rows 4-7: status + first 4 reviewers
+  [['Open',openCount],['In Review',reviewCount],['Closed',closedCount],['Total',allIssues.length]].forEach(([lbl,val],i) => {
     const rr = 4+i;
     const rev = revs[i] ? xmlCell('D',rr,revs[i][0],S.SUM_NORM)+xmlCell('E',rr,String(revs[i][1]),S.SUM_NUM) : '';
     rows.push(`<row r="${rr}">${xmlCell('A',rr,lbl,S.SUM_NORM)}${xmlCell('B',rr,String(val),S.SUM_NUM)}${rev}</row>`);
   });
-  // Extra reviewers beyond first 3 — track last row used
-  let lastRevRow = 6;
-  revs.slice(3).forEach(([n,cnt],i) => {
-    lastRevRow = 7+i;
+  // Extra reviewers beyond first 4 — track last row used
+  let lastRevRow = 7;
+  revs.slice(4).forEach(([n,cnt],i) => {
+    lastRevRow = 8+i;
     rows.push(`<row r="${lastRevRow}">${xmlCell('D',lastRevRow,n,S.SUM_NORM)}${xmlCell('E',lastRevRow,String(cnt),S.SUM_NUM)}</row>`);
   });
 
-  // Discipline section starts after reviewers (never before row 9, no collisions)
-  const discRow = Math.max(9, lastRevRow + 2);
+  // Discipline section starts after reviewers (never before row 10, no collisions)
+  const discRow = Math.max(10, lastRevRow + 2);
   rows.push(`<row r="${discRow}">${xmlCell('A',discRow,'By Discipline',S.SUM_HDR)}${xmlCell('D',discRow,'By Sheet (Top 10)',S.SUM_HDR)}</row>`);
   discs.forEach(([d,cnt],i) => {
     const rr = discRow+1+i;
@@ -695,11 +794,13 @@ function buildSummarySheetXml(allIssues, issuesByFile, hasMulti) {
   // Per-PDF breakdown
   if (hasMulti) {
     const tabStart = discRow + Math.max(discs.length, sheets.length) + 3;
-    rows.push(`<row r="${tabStart}">${xmlCell('A',tabStart,'By PDF / Discipline Tab',S.SUM_HDR)}${xmlCell('B',tabStart,'Issues',S.SUM_HDR)}${xmlCell('D',tabStart,'Open',S.SUM_HDR)}${xmlCell('E',tabStart,'Closed',S.SUM_HDR)}</row>`);
+    rows.push(`<row r="${tabStart}">${xmlCell('A',tabStart,'By PDF / Discipline Tab',S.SUM_HDR)}${xmlCell('B',tabStart,'Issues',S.SUM_HDR)}${xmlCell('C',tabStart,'Open',S.SUM_HDR)}${xmlCell('D',tabStart,'In Review',S.SUM_HDR)}${xmlCell('E',tabStart,'Closed',S.SUM_HDR)}</row>`);
     Object.entries(issuesByFile).forEach(([fname,iss],i) => {
       const rr = tabStart+1+i;
-      const tabOpen = iss.filter(x=>x.Status==='Open').length;
-      rows.push(`<row r="${rr}">${xmlCell('A',rr,fname,S.SUM_NORM)}${xmlCell('B',rr,String(iss.length),S.SUM_NUM)}${xmlCell('D',rr,String(tabOpen),S.SUM_NUM)}${xmlCell('E',rr,String(iss.length-tabOpen),S.SUM_NUM)}</row>`);
+      const tabOpen   = iss.filter(x=>x.Status==='Open').length;
+      const tabReview = iss.filter(x=>x.Status==='In Review').length;
+      const tabClosed = iss.length - tabOpen - tabReview;
+      rows.push(`<row r="${rr}">${xmlCell('A',rr,fname,S.SUM_NORM)}${xmlCell('B',rr,String(iss.length),S.SUM_NUM)}${xmlCell('C',rr,String(tabOpen),S.SUM_NUM)}${xmlCell('D',rr,String(tabReview),S.SUM_NUM)}${xmlCell('E',rr,String(tabClosed),S.SUM_NUM)}</row>`);
     });
   }
 
